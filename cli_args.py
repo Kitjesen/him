@@ -22,28 +22,30 @@ def add_rsl_rl_args(parser: argparse.ArgumentParser):
     Args:
         parser: The parser to add the arguments to.
 
-    - experiment_name: 实验名，决定日志与 checkpoint 存放的二级目录名，
-        例如 logs/rsl_rl/<experiment_name>/<run_name>/...
-      如果不指定，则使用 agent 配置里的默认 experiment_name（如 unitree_go2_flat）。
+    - experiment_name: Name of the experiment, determines the second-level directory for logs and
+        checkpoints, e.g. logs/rsl_rl/<experiment_name>/<run_name>/...
+      If not specified, uses the default experiment_name from the agent config (e.g. unitree_go2_flat).
 
-    - run_name: run 的名字，会作为时间戳后的后缀追加到日志目录名中，
-        便于在同一 experiment_name 下区分多次不同设置的训练。
+    - run_name: Name of the run, appended as a suffix after the timestamp in the log directory name,
+        useful for distinguishing multiple training runs with different settings under the same experiment_name.
 
-    - resume: 是否从已有 checkpoint 恢复训练。
-        - 在 train.py 中，当 resume=True 时，会根据 load_run / load_checkpoint 或默认规则找到 checkpoint 并加载。
+    - resume: Whether to resume training from an existing checkpoint.
+        - In train.py, when resume=True, the checkpoint is located and loaded based on
+          load_run / load_checkpoint or default search rules.
 
-    - load_run: 要恢复的 run 目录名，例如 "2025-11-28_19-21-18"，
-        通常与 logs/rsl_rl/<experiment_name>/<load_run>/ 对应。
+    - load_run: Name of the run directory to resume from, e.g. "2025-11-28_19-21-18",
+        typically corresponds to logs/rsl_rl/<experiment_name>/<load_run>/.
 
-    - checkpoint: 要加载的 checkpoint 路径或文件名：
-        - 如果是相对路径（如 "model_01000.pt"），会和 log_root_path/load_run 组合；
-        - 如果是完整路径，则直接按该路径查找（play.py 中通过 retrieve_file_path 解析）。
+    - checkpoint: Path or filename of the checkpoint to load:
+        - If a relative path (e.g. "model_01000.pt"), it is combined with log_root_path/load_run;
+        - If a full path, it is resolved directly (parsed via retrieve_file_path in play.py).
 
-    - logger: 选择使用哪种日志后台（wandb / tensorboard / neptune），
-        用于在训练时记录曲线、模型等信息。None 表示只用本地日志目录，不接第三方服务。
+    - logger: Selects the logging backend (wandb / tensorboard / neptune),
+        used to record training curves and model info. None means local log directory only,
+        without connecting to any third-party service.
 
-    - log_project_name: 当 logger 使用 wandb 或 neptune 时，对应远端项目的名称，
-        便于在这些平台中把同一项目的多次实验归类。
+    - log_project_name: When logger is wandb or neptune, the name of the corresponding remote project,
+        useful for grouping multiple experiments of the same project on those platforms.
     """
     # create a new argument group
     arg_group = parser.add_argument_group("rsl_rl", description="Arguments for RSL-RL agent.")

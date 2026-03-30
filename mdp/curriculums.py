@@ -29,32 +29,32 @@ def command_levels_vel(
     performance_threshold: float = 0.8,
     delta_step: float = 0.1,
 ) -> torch.Tensor:
-    """速度命令课程学习：根据跟踪性能自动调整命令速度范围
+    """Velocity command curriculum: automatically adjusts command velocity range based on tracking performance.
 
     Args:
-        env: 环境实例
-        env_ids: 环境ID序列
-        reward_term_name: 用于评估性能的奖励项名称
-        range_multiplier: 速度范围倍数 (开始倍数, 结束倍数)
-        performance_threshold: 性能阈值，达到此值时增加命令范围
-        delta_step: 每次调整的步长
+        env: Environment instance
+        env_ids: Sequence of environment IDs
+        reward_term_name: Name of the reward term used to evaluate performance
+        range_multiplier: Velocity range multipliers (start multiplier, end multiplier)
+        performance_threshold: Performance threshold; command range expands when this is exceeded
+        delta_step: Step size for each adjustment
 
     Returns:
-        当前最大线性速度的tensor
+        Tensor of the current maximum linear velocity
     """
-    # 获取命令管理器和基础速度配置
+    # Get command manager and base velocity configuration
     base_velocity_cmd = env.command_manager.get_term("base_velocity")
     base_velocity_ranges = base_velocity_cmd.cfg.ranges
 
-    # 初始化课程学习参数（仅在需要时）
+    # Initialize curriculum parameters (only when needed)
     if not hasattr(env, "_vel_curriculum_initialized"):
         env._vel_curriculum_initialized = True
-        # 存储原始速度范围
+        # Store original velocity ranges
         env._original_vel_ranges = {
             "lin_vel_x": list(base_velocity_ranges.lin_vel_x),
             "lin_vel_y": list(base_velocity_ranges.lin_vel_y),
         }
-        # 计算初始和最终范围
+        # Compute initial and final ranges
         original_x = torch.tensor(env._original_vel_ranges["lin_vel_x"], device=env.device)
         original_y = torch.tensor(env._original_vel_ranges["lin_vel_y"], device=env.device)
 
@@ -63,44 +63,44 @@ def command_levels_vel(
         env._initial_vel_y = original_y * range_multiplier[0]
         env._final_vel_y = original_y * range_multiplier[1]
 
-        # 设置初始命令范围
+        # Set initial command range
         base_velocity_ranges.lin_vel_x = env._initial_vel_x.tolist()
         base_velocity_ranges.lin_vel_y = env._initial_vel_y.tolist()
 
-    # 每个episode结束时检查是否需要调整命令范围（当有环境重置时）
+    # At each episode end, check whether command range needs adjustment (when environments reset)
     if len(env_ids) > 0:
         try:
             episode_sums = env.reward_manager._episode_sums[reward_term_name]
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            # 计算归一化性能
+            # Compute normalized performance
             max_possible_reward = reward_term_cfg.weight * env.max_episode_length_s
             if abs(max_possible_reward) > 1e-6:
                 mean_performance = torch.mean(episode_sums[env_ids]) / max_possible_reward
 
-                # 如果性能超过阈值，增加命令范围
+                # If performance exceeds threshold, expand command range
                 if mean_performance > performance_threshold:
                     current_vel_x = torch.tensor(base_velocity_ranges.lin_vel_x, device=env.device)
                     current_vel_y = torch.tensor(base_velocity_ranges.lin_vel_y, device=env.device)
 
-                    # 计算新的速度范围
+                    # Compute new velocity range
                     delta = torch.tensor([-delta_step, delta_step], device=env.device)
                     new_vel_x = current_vel_x + delta
                     new_vel_y = current_vel_y + delta
 
-                    # 限制在最终范围内
+                    # Clamp to final range
                     new_vel_x = torch.clamp(new_vel_x, min=env._final_vel_x[0], max=env._final_vel_x[1])
                     new_vel_y = torch.clamp(new_vel_y, min=env._final_vel_y[0], max=env._final_vel_y[1])
 
-                    # 更新配置
+                    # Update configuration
                     base_velocity_ranges.lin_vel_x = new_vel_x.tolist()
                     base_velocity_ranges.lin_vel_y = new_vel_y.tolist()
 
         except (KeyError, AttributeError) as e:
-            # 记录警告但不中断执行
+            # Log warning but do not interrupt execution
             pass
 
-    # 返回当前最大线性速度
+    # Return current maximum linear velocity
     current_max_vel = torch.tensor(base_velocity_ranges.lin_vel_x[1], device=env.device)
     return current_max_vel
 
@@ -114,21 +114,21 @@ def terrain_levels_vel(
     distance_threshold_factor: float = 0.5,
     max_terrain_level: int = 5,
 ) -> torch.Tensor:
-    """地形课程学习：根据机器人运动距离和性能自动调整地形难度
+    """Terrain curriculum: automatically adjusts terrain difficulty based on robot travel distance and performance.
 
     Args:
-        env: 环境实例
-        env_ids: 环境ID序列
-        asset_cfg: 机器人资产配置
-        reward_term_name: 用于评估性能的奖励项名称
-        performance_threshold: 性能阈值
-        distance_threshold_factor: 距离阈值因子
-        max_terrain_level: 最大地形级别
+        env: Environment instance
+        env_ids: Sequence of environment IDs
+        asset_cfg: Robot asset configuration
+        reward_term_name: Name of the reward term used to evaluate performance
+        performance_threshold: Performance threshold
+        distance_threshold_factor: Distance threshold factor
+        max_terrain_level: Maximum terrain difficulty level
 
     Returns:
-        平均地形级别的tensor
+        Tensor of the mean terrain level
     """
-    # 检查地形是否存在
+    # Check whether terrain exists
     if not hasattr(env.scene, "terrain") or env.scene.terrain is None:
         return torch.zeros(1, device=env.device)
 
@@ -136,7 +136,7 @@ def terrain_levels_vel(
     if not hasattr(terrain, "terrain_levels") or terrain.terrain_levels is None:
         return torch.zeros(1, device=env.device)
 
-    # 获取机器人资产
+    # Get robot asset
     try:
         asset: Articulation = env.scene[asset_cfg.name]
         command = env.command_manager.get_command("base_velocity")
@@ -144,27 +144,27 @@ def terrain_levels_vel(
         return torch.mean(terrain.terrain_levels.float())
 
     if len(env_ids) > 0:
-        # 计算机器人行走距离
+        # Compute robot travel distance
         distance = torch.norm(asset.data.root_pos_w[env_ids, :2] - env.scene.env_origins[env_ids, :2], dim=1)
 
-        # 计算期望距离
+        # Compute expected distance
         expected_distance = torch.norm(command[env_ids, :2], dim=1) * env.max_episode_length_s
 
-        # 决定地形级别调整
-        # 如果走得足够远，升级地形
+        # Determine terrain level adjustment
+        # If the robot traveled far enough, promote terrain level
         move_up = distance > terrain.cfg.terrain_generator.size[0] / 2
-        # 如果走得不够远，降级地形
+        # If the robot did not travel far enough, demote terrain level
         move_down = distance < expected_distance * distance_threshold_factor
-        move_down &= ~move_up  # 确保不同时升级和降级
+        move_down &= ~move_up  # Ensure promotion and demotion do not occur simultaneously
 
-        # 限制升级：不能超过最大地形级别
+        # Cap promotion: cannot exceed max terrain level
         current_levels = terrain.terrain_levels[env_ids]
         move_up &= current_levels < max_terrain_level
 
-        # 更新地形级别
+        # Update terrain levels
         terrain.update_env_origins(env_ids, move_up, move_down)
 
-    # 返回平均地形级别
+    # Return mean terrain level
     return torch.mean(terrain.terrain_levels.float())
 
 
@@ -177,24 +177,24 @@ def disturbance_levels_vel(
     performance_threshold: float = 0.8,
     curriculum_step: float = 0.1,
 ) -> torch.Tensor:
-    """外力干扰课程学习：根据性能逐渐增加外力扰动强度
+    """External disturbance curriculum: gradually increases external force perturbation intensity based on performance.
 
     Args:
-        env: 环境实例
-        env_ids: 环境ID序列
-        reward_term_name: 用于评估性能的奖励项名称
-        force_range_start: 初始外力范围 (N)
-        force_range_end: 最终外力范围 (N)
-        performance_threshold: 性能阈值
-        curriculum_step: 课程学习步长
+        env: Environment instance
+        env_ids: Sequence of environment IDs
+        reward_term_name: Name of the reward term used to evaluate performance
+        force_range_start: Initial external force range (N)
+        force_range_end: Final external force range (N)
+        performance_threshold: Performance threshold
+        curriculum_step: Curriculum step size
 
     Returns:
-        当前扰动级别的tensor
+        Tensor of the current disturbance level
     """
-    # 初始化扰动课程学习状态
+    # Initialize disturbance curriculum state
     if not hasattr(env, "_disturbance_curriculum_initialized"):
         env._disturbance_curriculum_initialized = True
-        env._disturbance_level = 0.0  # 课程学习级别 (0.0-1.0)
+        env._disturbance_level = 0.0  # Curriculum level (0.0-1.0)
         env._disturbance_episode_count = 0
         env._disturbance_performance_sum = 0.0
 
@@ -203,35 +203,35 @@ def disturbance_levels_vel(
             episode_sums = env.reward_manager._episode_sums[reward_term_name]
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            # 计算平均性能
+            # Compute mean performance
             max_possible_reward = reward_term_cfg.weight * env.max_episode_length_s
             if abs(max_possible_reward) > 1e-6:
                 current_performance = torch.mean(episode_sums[env_ids]) / max_possible_reward
 
-                # 更新性能统计
+                # Update performance statistics
                 env._disturbance_performance_sum += float(current_performance)
                 env._disturbance_episode_count += 1
 
-                # 每100个episode检查一次是否需要增加难度
+                # Check every 100 episodes whether difficulty should increase
                 if env._disturbance_episode_count % 100 == 0:
                     avg_performance = env._disturbance_performance_sum / env._disturbance_episode_count
 
                     if avg_performance > performance_threshold and env._disturbance_level < 1.0:
                         env._disturbance_level = min(1.0, env._disturbance_level + curriculum_step)
 
-                        # 重置统计
+                        # Reset statistics
                         env._disturbance_performance_sum = 0.0
                         env._disturbance_episode_count = 0
 
-                        # 更新外力范围
+                        # Update external force range
                         level = env._disturbance_level
                         new_force_min = force_range_start[0] + level * (force_range_end[0] - force_range_start[0])
                         new_force_max = force_range_start[1] + level * (force_range_end[1] - force_range_start[1])
 
-                        # 更新事件管理器的外力参数
+                        # Update event manager external force parameters
                         try:
                             if hasattr(env, "event_manager"):
-                                # 查找外力相关的事件项
+                                # Find event terms related to external force
                                 for term_name, term in env.event_manager._terms.items():
                                     if "force" in term_name.lower() and hasattr(term, "cfg"):
                                         if hasattr(term.cfg, "params") and "force_range" in term.cfg.params:
@@ -242,7 +242,7 @@ def disturbance_levels_vel(
         except (KeyError, AttributeError):
             pass
 
-    # 返回当前扰动级别
+    # Return current disturbance level
     return torch.tensor(getattr(env, "_disturbance_level", 0.0), device=env.device)
 
 
@@ -255,24 +255,24 @@ def mass_randomization_levels_vel(
     performance_threshold: float = 0.8,
     curriculum_step: float = 0.1,
 ) -> torch.Tensor:
-    """质量随机化课程学习：根据性能逐渐增加质量变化范围
+    """Mass randomization curriculum: gradually increases the mass variation range based on performance.
 
     Args:
-        env: 环境实例
-        env_ids: 环境ID序列
-        reward_term_name: 用于评估性能的奖励项名称
-        mass_range_start: 初始质量变化范围（倍数）
-        mass_range_end: 最终质量变化范围（倍数）
-        performance_threshold: 性能阈值
-        curriculum_step: 课程学习步长
+        env: Environment instance
+        env_ids: Sequence of environment IDs
+        reward_term_name: Name of the reward term used to evaluate performance
+        mass_range_start: Initial mass variation range (multiplier)
+        mass_range_end: Final mass variation range (multiplier)
+        performance_threshold: Performance threshold
+        curriculum_step: Curriculum step size
 
     Returns:
-        当前质量随机化级别的tensor
+        Tensor of the current mass randomization level
     """
-    # 初始化质量课程学习状态
+    # Initialize mass curriculum state
     if not hasattr(env, "_mass_curriculum_initialized"):
         env._mass_curriculum_initialized = True
-        env._mass_curriculum_level = 0.0  # 课程学习级别 (0.0-1.0)
+        env._mass_curriculum_level = 0.0  # Curriculum level (0.0-1.0)
         env._mass_episode_count = 0
         env._mass_performance_sum = 0.0
 
@@ -281,32 +281,32 @@ def mass_randomization_levels_vel(
             episode_sums = env.reward_manager._episode_sums[reward_term_name]
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            # 计算平均性能
+            # Compute mean performance
             max_possible_reward = reward_term_cfg.weight * env.max_episode_length_s
             if abs(max_possible_reward) > 1e-6:
                 current_performance = torch.mean(episode_sums[env_ids]) / max_possible_reward
 
-                # 更新性能统计
+                # Update performance statistics
                 env._mass_performance_sum += float(current_performance)
                 env._mass_episode_count += 1
 
-                # 每50个episode检查一次是否需要增加难度
+                # Check every 50 episodes whether difficulty should increase
                 if env._mass_episode_count % 50 == 0:
                     avg_performance = env._mass_performance_sum / env._mass_episode_count
 
                     if avg_performance > performance_threshold and env._mass_curriculum_level < 1.0:
                         env._mass_curriculum_level = min(1.0, env._mass_curriculum_level + curriculum_step)
 
-                        # 重置统计
+                        # Reset statistics
                         env._mass_performance_sum = 0.0
                         env._mass_episode_count = 0
 
-                        # 更新质量范围
+                        # Update mass range
                         level = env._mass_curriculum_level
                         new_mass_min = mass_range_start[0] + level * (mass_range_end[0] - mass_range_start[0])
                         new_mass_max = mass_range_start[1] + level * (mass_range_end[1] - mass_range_start[1])
 
-                        # 更新事件管理器的质量参数
+                        # Update event manager mass parameters
                         try:
                             if hasattr(env, "event_manager"):
                                 for term_name, term in env.event_manager._terms.items():
@@ -319,7 +319,7 @@ def mass_randomization_levels_vel(
         except (KeyError, AttributeError):
             pass
 
-    # 返回当前质量课程级别
+    # Return current mass curriculum level
     return torch.tensor(getattr(env, "_mass_curriculum_level", 0.0), device=env.device)
 
 
@@ -332,29 +332,29 @@ def com_randomization_levels_vel(
     performance_threshold: float = 0.8,
     curriculum_step: float = 0.1,
 ) -> torch.Tensor:
-    """质心位置随机化课程学习：根据性能逐渐增加质心偏移范围
+    """Center-of-mass randomization curriculum: gradually increases CoM offset range based on performance.
 
     Args:
-        env: 环境实例
-        env_ids: 环境ID序列
-        reward_term_name: 用于评估性能的奖励项名称
-        com_range_start: 初始质心偏移范围 (m)
-        com_range_end: 最终质心偏移范围 (m)
-        performance_threshold: 性能阈值
-        curriculum_step: 课程学习步长
+        env: Environment instance
+        env_ids: Sequence of environment IDs
+        reward_term_name: Name of the reward term used to evaluate performance
+        com_range_start: Initial CoM offset range (m)
+        com_range_end: Final CoM offset range (m)
+        performance_threshold: Performance threshold
+        curriculum_step: Curriculum step size
 
     Returns:
-        当前质心随机化级别的tensor
+        Tensor of the current CoM randomization level
     """
     if com_range_start is None:
         com_range_start = {"x": (-0.01, 0.01), "y": (-0.01, 0.01), "z": (-0.01, 0.01)}
     if com_range_end is None:
         com_range_end = {"x": (-0.05, 0.05), "y": (-0.05, 0.05), "z": (-0.05, 0.05)}
 
-    # 初始化COM课程学习状态
+    # Initialize CoM curriculum state
     if not hasattr(env, "_com_curriculum_initialized"):
         env._com_curriculum_initialized = True
-        env._com_curriculum_level = 0.0  # 课程学习级别 (0.0-1.0)
+        env._com_curriculum_level = 0.0  # Curriculum level (0.0-1.0)
         env._com_episode_count = 0
         env._com_performance_sum = 0.0
 
@@ -363,27 +363,27 @@ def com_randomization_levels_vel(
             episode_sums = env.reward_manager._episode_sums[reward_term_name]
             reward_term_cfg = env.reward_manager.get_term_cfg(reward_term_name)
 
-            # 计算平均性能
+            # Compute mean performance
             max_possible_reward = reward_term_cfg.weight * env.max_episode_length_s
             if abs(max_possible_reward) > 1e-6:
                 current_performance = torch.mean(episode_sums[env_ids]) / max_possible_reward
 
-                # 更新性能统计
+                # Update performance statistics
                 env._com_performance_sum += float(current_performance)
                 env._com_episode_count += 1
 
-                # 每50个episode检查一次是否需要增加难度
+                # Check every 50 episodes whether difficulty should increase
                 if env._com_episode_count % 50 == 0:
                     avg_performance = env._com_performance_sum / env._com_episode_count
 
                     if avg_performance > performance_threshold and env._com_curriculum_level < 1.0:
                         env._com_curriculum_level = min(1.0, env._com_curriculum_level + curriculum_step)
 
-                        # 重置统计
+                        # Reset statistics
                         env._com_performance_sum = 0.0
                         env._com_episode_count = 0
 
-                        # 更新质心范围
+                        # Update CoM range
                         level = env._com_curriculum_level
                         new_com_ranges = {}
                         for axis in ["x", "y", "z"]:
@@ -393,7 +393,7 @@ def com_randomization_levels_vel(
                             new_max = start_range[1] + level * (end_range[1] - start_range[1])
                             new_com_ranges[axis] = (new_min, new_max)
 
-                        # 更新事件管理器的质心参数
+                        # Update event manager CoM parameters
                         try:
                             if hasattr(env, "event_manager"):
                                 for term_name, term in env.event_manager._terms.items():
@@ -409,5 +409,5 @@ def com_randomization_levels_vel(
         except (KeyError, AttributeError):
             pass
 
-    # 返回当前质心课程级别
+    # Return current CoM curriculum level
     return torch.tensor(getattr(env, "_com_curriculum_level", 0.0), device=env.device)

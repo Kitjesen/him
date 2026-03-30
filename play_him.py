@@ -208,19 +208,19 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
         "runner": {
             "policy_class_name": "HIMActorCritic",
             "algorithm_class_name": "HIMPPO",
-            "num_steps_per_env": 200,  # 与HIMLoco论文一致
+            "num_steps_per_env": 200,  # consistent with HIMLoco paper
             "save_interval": 200,
         },
         "algorithm": {
             "num_learning_epochs": 5,
             "num_mini_batches": 4,
             "clip_param": 0.2,
-            "gamma": 0.99,  # 与HIMLoco论文一致
+            "gamma": 0.99,  # consistent with HIMLoco paper
             "lam": 0.95,
             "value_loss_coef": 1.0,
-            "entropy_coef": 0.01,  # 与HIMLoco论文一致
+            "entropy_coef": 0.01,  # consistent with HIMLoco paper
             "learning_rate": 1e-3,
-            "max_grad_norm": 10.0,  # 与HIMLoco论文一致
+            "max_grad_norm": 10.0,  # consistent with HIMLoco paper
             "use_clipped_value_loss": True,
             "schedule": "fixed",
             "desired_kl": 0.01,
@@ -232,7 +232,7 @@ def main(env_cfg: ManagerBasedRLEnvCfg | DirectRLEnvCfg | DirectMARLEnvCfg, agen
             "init_noise_std": 1.0,
             "estimator_latent_dim": 16,
             "estimator_lr": 1e-3,
-            "num_prototype": 32,  # 与HIMLoco论文一致
+            "num_prototype": 32,  # consistent with HIMLoco paper
         },
         "history_len": history_len,
     }
