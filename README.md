@@ -178,15 +178,15 @@ The exported model:
 
 ---
 
-## Training Results (v7c)
+## Training Results
 
-| Metric | Value |
-|--------|-------|
+See [TRAINING_LOG.md](TRAINING_LOG.md) for detailed experiment history.
+
+| Metric | Best |
+|--------|------|
 | Max terrain level | ~8.7 / 9.0 |
 | Mean reward | ~245 |
 | Noise std | ~0.55 |
-| Iterations | 500+ |
-| Episode timeout rate | ~100% |
 
 ---
 
