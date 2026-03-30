@@ -14,7 +14,8 @@ Format: `mlp_v{N}[suffix]` — runs stored under `logs/rsl_rl/thunder_hist_rough
 | v6b | — | 0.001 | — | — | — | intermediate |
 | v7 | v6b | 0.001 | — | — | — | |
 | v7b | v7 | 0.001 | — | **8.71** | **~242** | noise→0.55, entropy too low → stuck at 8.71 |
-| v7c | v7b/model_400 | **0.01** | restored entropy | 6.05 (recovering) | 205 | noise stuck at 1.32, action_rate↑, ongoing |
+| v7c | v7b/model_400 | **0.01** | restored entropy | 6.05 | 205 | noise stuck at 1.32, action_rate -2.49 → killed at iter 1773 |
+| v7d | v7b/model_400 | **0.005** | reduced entropy | ongoing | — | action_rate -0.58 at iter 1, clean start |
 
 ---
 
