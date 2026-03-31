@@ -32,7 +32,7 @@ class ThunderHistRoughCommandParams:
     """Command parameters for Thunder Hist Rough environment."""
 
     # Velocity command ranges
-    lin_vel_x: tuple = (-2.5, 2.5)
+    lin_vel_x: tuple = (-1.0, 1.0)
     lin_vel_y: tuple = (-1.0, 1.0)
     ang_vel_z: tuple = (-1.0, 1.0)
 
@@ -73,14 +73,14 @@ class ThunderHistRoughRewardWeights:
     is_terminated: float = 0.0
 
     # Tracking rewards
-    track_lin_vel_xy_exp: float = 6.0
-    track_ang_vel_z_exp: float = 3.0
+    track_lin_vel_xy_exp: float = 0.0  # replaced by Eq.14
+    track_ang_vel_z_exp: float = 0.0  # replaced by Eq.15
     upward: float = 2.0
 
     # Root penalties
-    lin_vel_z_l2: float = -2.0
-    ang_vel_xy_l2: float = -0.05
-    flat_orientation_l2: float = -0.1
+    lin_vel_z_l2: float = 0.0  # covered by Eq.16 body_motion
+    ang_vel_xy_l2: float = 0.0  # covered by Eq.16 body_motion
+    flat_orientation_l2: float = 0.0  # covered by Eq.17 body_orientation
     base_height_l2: float = 0.0
     body_lin_acc_l2: float = 0.0
 
@@ -94,23 +94,36 @@ class ThunderHistRoughRewardWeights:
     joint_pos_limits: float = -2.0
     joint_vel_limits: float = 0.0
     joint_power: float = -2e-5
-    stand_still: float = -2.0
+    stand_still: float = -5.0
     joint_pos_penalty: float = -1.0
     wheel_vel_penalty: float = 0.0
     joint_mirror: float = -0.05
 
     # Action penalties
-    action_rate_l2: float = -0.01
+    action_rate_l2: float = -0.03
     action_smoothness_l2: float = 0.0
 
+    # B2W velocity tracking (replaces original tracking)
+    track_lin_vel_direction: float = 6.0
+    track_ang_vel_yaw: float = 3.0
+    body_motion_penalty: float = -1.0
+    body_tilt_penalty: float = -1.0
+
+    # Base height (B2W Eq.18: target=0.426, tolerance=0.05)
+    base_height_tolerance: float = -10.0
+
+    # Foot impact penalties
+    foot_impact_velocity: float = -0.6
+    contact_force_threshold: float = -0.01
+
     # Contact penalties
-    undesired_contacts: float = -1.0
+    undesired_contacts: float = -3.0
     contact_forces: float = -5e-4
 
     # Other rewards
     feet_air_time: float = 0.0
     feet_contact: float = 0.0
-    feet_contact_without_cmd: float = 0.1
+    feet_contact_without_cmd: float = 0.0
     feet_stumble: float = -5.0
     feet_slide: float = 0.0
     feet_height: float = 0.0
@@ -419,7 +432,7 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             ".*_hip_joint": 0.125,
             "^(?!.*_hip_joint).*": 0.25,
         }
-        self.actions.joint_vel.scale = 5.0
+        self.actions.joint_vel.scale = 10.0
         self.actions.joint_pos.clip = {".*": (-100.0, 100.0)}
         self.actions.joint_vel.clip = {".*": (-100.0, 100.0)}
         self.actions.joint_pos.joint_names = self.leg_joint_names
@@ -517,6 +530,26 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # Action penalties
         self.rewards.action_rate_l2.weight = w.action_rate_l2
 
+        # B2W velocity tracking
+        self.rewards.track_lin_vel_direction.weight = w.track_lin_vel_direction
+        self.rewards.track_ang_vel_yaw.weight = w.track_ang_vel_yaw
+        self.rewards.body_motion_penalty.weight = w.body_motion_penalty
+        self.rewards.body_tilt_penalty.weight = w.body_tilt_penalty
+
+        # Base height tolerance (B2W: target=0.426, tol=0.05)
+        self.rewards.base_height_tolerance.weight = w.base_height_tolerance
+        self.rewards.base_height_tolerance.params["target_height"] = 0.426
+        self.rewards.base_height_tolerance.params["tolerance"] = 0.05
+        self.rewards.base_height_tolerance.params["asset_cfg"].body_names = [self.base_link_name]
+
+        # Foot impact penalties
+        self.rewards.foot_impact_velocity.weight = w.foot_impact_velocity
+        self.rewards.foot_impact_velocity.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.foot_impact_velocity.params["asset_cfg"].body_names = [self.foot_link_name]
+        self.rewards.contact_force_threshold.weight = w.contact_force_threshold
+        self.rewards.contact_force_threshold.params["sensor_cfg"].body_names = [self.foot_link_name]
+        self.rewards.contact_force_threshold.params["threshold"] = 100.0
+
         # Contact penalties
         self.rewards.undesired_contacts.weight = w.undesired_contacts
         self.rewards.undesired_contacts.params["sensor_cfg"].body_names = [f"^(?!.*{self.foot_link_name}).*"]
@@ -557,7 +590,7 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.terminations.illegal_contact = None
 
         # 禁用其他课程学习，专注于基本运动训练
-        # self.curriculum.command_levels — enabled (velocity curriculum)
+        self.curriculum.command_levels = None  # — enabled (velocity curriculum)
         self.curriculum.disturbance_levels = None
         self.curriculum.mass_randomization_levels = None
         self.curriculum.com_randomization_levels = None

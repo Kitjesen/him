@@ -1022,3 +1022,172 @@ def track_gait_command_categorical(
     reward = torch.ones(env.num_envs, device=env.device) * weight_match
     
     return reward
+
+
+
+# ── Foot Impact Penalties (ETH, Arm et al. 2025 style) ──
+
+def foot_impact_velocity(
+    env: ManagerBasedRLEnv,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize foot velocity at the moment of ground contact.
+
+    Only activates when a foot JUST made contact (transition from air to ground).
+    Encourages soft landings and smooth wheel-ground interaction.
+
+    r = sum_feet( ||v_foot||^2 * just_contacted )
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    asset: Articulation = env.scene[asset_cfg.name]
+
+    # Contact just started: current contact AND previous no contact
+    # contact_sensor.data.net_forces_w_history: (N, history, num_bodies, 3)
+    current_contact = torch.norm(contact_sensor.data.net_forces_w_history[:, 0, :, :], dim=-1) > 1.0  # (N, num_bodies)
+    if contact_sensor.data.net_forces_w_history.shape[1] > 1:
+        prev_contact = torch.norm(contact_sensor.data.net_forces_w_history[:, 1, :, :], dim=-1) > 1.0
+    else:
+        prev_contact = torch.zeros_like(current_contact)
+
+    # Just contacted = current AND NOT previous
+    just_contacted = current_contact & ~prev_contact  # (N, num_bodies)
+
+    # Get foot body velocities
+    # body_vel_w shape: (N, num_bodies, 6) — [lin_vel(3), ang_vel(3)]
+    foot_vel = asset.data.body_lin_vel_w  # (N, num_bodies, 3)
+
+    # Velocity magnitude squared for each body
+    vel_sq = torch.sum(torch.square(foot_vel), dim=-1)  # (N, num_bodies)
+
+    # Only penalize at contact moment
+    impact = vel_sq * just_contacted.float()  # (N, num_bodies)
+
+    # Sum across all bodies (contact sensor tracks the configured bodies)
+    return torch.sum(impact, dim=1)  # (N,)
+
+
+def contact_force_threshold(
+    env: ManagerBasedRLEnv,
+    threshold: float = 100.0,
+    sensor_cfg: SceneEntityCfg = SceneEntityCfg("contact_forces"),
+) -> torch.Tensor:
+    """Penalize contact forces exceeding a threshold.
+
+    r = sum_bodies( max(||F|| - threshold, 0) )
+
+    Different from the existing contact_forces reward which penalizes ALL forces.
+    This only penalizes forces ABOVE the threshold — normal walking forces are free.
+    """
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    forces = contact_sensor.data.net_forces_w_history[:, 0, :, :]  # (N, num_bodies, 3)
+    force_mag = torch.norm(forces, dim=-1)  # (N, num_bodies)
+    excess = torch.clamp(force_mag - threshold, min=0.0)
+    return torch.sum(excess, dim=1)  # (N,)
+
+
+
+# ── Base Height with Tolerance (B2W Eq.18) ──
+
+def base_height_tolerance(
+    env: ManagerBasedRLEnv,
+    target_height: float = 0.426,
+    tolerance: float = 0.05,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Penalize base height deviation beyond tolerance (B2W Eq.18).
+
+    r_h = max(0, |h_base - target| - tolerance)
+    No penalty within [target-tol, target+tol] = [0.376, 0.476]
+    """
+    asset: Articulation = env.scene[asset_cfg.name]
+    h = asset.data.root_pos_w[:, 2]
+    deviation = torch.abs(h - target_height) - tolerance
+    return torch.clamp(deviation, min=0.0)
+
+
+
+# ── B2W-style Rewards (Bjelonic et al.) ──
+
+def track_lin_vel_direction(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """B2W Eq.14: Linear velocity tracking with direction reward.
+
+    if |v_des| < 0.05:
+        r = 2.0 * exp(-2.0 * ||v_xy_body||^2)     # stop command: penalize any motion
+    else:
+        r = exp(-2.0 * ||v_xy - v_des||^2) + v_des · v_xy  # track + direction dot product
+    """
+    asset = env.scene[asset_cfg.name]
+    v_xy = asset.data.root_lin_vel_b[:, :2]  # body frame xy velocity
+    v_des = env.command_manager.get_command(command_name)[:, :2]  # desired xy velocity
+
+    v_des_norm = torch.norm(v_des, dim=1)
+    is_stop = v_des_norm < 0.05
+
+    # Stop: reward stillness
+    r_stop = 2.0 * torch.exp(-2.0 * torch.sum(v_xy ** 2, dim=1))
+
+    # Move: exp tracking + direction dot product
+    error = torch.sum((v_xy - v_des) ** 2, dim=1)
+    dot = torch.sum(v_des * v_xy, dim=1)  # direction alignment
+    r_move = torch.exp(-2.0 * error) + dot
+
+    return torch.where(is_stop, r_stop, r_move)
+
+
+def track_ang_vel_yaw(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """B2W Eq.15: Angular velocity tracking.
+
+    r_av = exp(-2.0 * (omega_z_body - omega_des)^2)
+    """
+    asset = env.scene[asset_cfg.name]
+    omega_z = asset.data.root_ang_vel_b[:, 2]
+    omega_des = env.command_manager.get_command(command_name)[:, 2]
+    return torch.exp(-2.0 * (omega_z - omega_des) ** 2)
+
+
+def body_motion_penalty(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """B2W Eq.16: Penalize non-commanded body motion.
+
+    r_bm = -1.25 * v_z^2 - 0.4 * |omega_x| - 0.4 * |omega_y|
+
+    Penalizes: vertical bouncing (v_z), roll (omega_x), pitch (omega_y).
+    Returns positive value — use negative weight.
+    """
+    asset = env.scene[asset_cfg.name]
+    v_z = asset.data.root_lin_vel_b[:, 2]
+    omega_x = asset.data.root_ang_vel_b[:, 0]
+    omega_y = asset.data.root_ang_vel_b[:, 1]
+    return 1.25 * v_z ** 2 + 0.4 * torch.abs(omega_x) + 0.4 * torch.abs(omega_y)
+
+
+def body_tilt_penalty(
+    env: ManagerBasedRLEnv,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """B2W Eq.17: Body orientation penalty via rotation matrix.
+
+    r_ori = arccos(R_b(3,3))^2
+
+    R_b(3,3) = cos(tilt_angle). Upright → 0, tilted → large.
+    More robust than Euler angles (no gimbal lock).
+    Returns positive value — use negative weight.
+    """
+    asset = env.scene[asset_cfg.name]
+    # projected_gravity_b = R_b^T @ [0,0,-1]
+    # R_b(3,3) = cos(tilt) = -projected_gravity_b[z]
+    gz = -asset.data.projected_gravity_b[:, 2]  # = R_b(3,3)
+    gz = torch.clamp(gz, -1.0, 1.0)  # numerical safety for arccos
+    tilt = torch.arccos(gz)
+    return tilt ** 2
