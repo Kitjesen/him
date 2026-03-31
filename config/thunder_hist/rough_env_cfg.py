@@ -32,7 +32,7 @@ class ThunderHistRoughCommandParams:
     """Command parameters for Thunder Hist Rough environment."""
 
     # Velocity command ranges
-    lin_vel_x: tuple = (-1.0, 1.0)
+    lin_vel_x: tuple = (-2.5, 2.5)
     lin_vel_y: tuple = (-1.0, 1.0)
     ang_vel_z: tuple = (-1.0, 1.0)
 
@@ -100,7 +100,7 @@ class ThunderHistRoughRewardWeights:
     joint_mirror: float = -0.05
 
     # Action penalties
-    action_rate_l2: float = -0.05
+    action_rate_l2: float = -0.01
     action_smoothness_l2: float = 0.0
 
     # Contact penalties
@@ -122,9 +122,9 @@ class ThunderHistRoughRewardWeights:
 class ThunderHistObservationsCfg(ObservationsCfg):
     @configclass
     class PolicyCfg(ObsGroup):
-        """Policy observation config - with 5-frame history"""
+        """Policy观测配置 - 带5帧历史信息"""
 
-        # Base angular velocity - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 基座角速度 - 5帧历史 (3维 * 5帧 = 15维)
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
             noise=Unoise(n_min=-0.2, n_max=0.2),
@@ -132,7 +132,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=0.25,
         )
 
-        # Projected gravity vector - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 投影重力向量 - 5帧历史 (3维 * 5帧 = 15维)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             noise=Unoise(n_min=-0.05, n_max=0.05),
@@ -140,7 +140,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=1.0,
         )
 
-        # Velocity commands - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 速度命令 - 5帧历史 (3维 * 5帧 = 15维)
         velocity_commands = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "base_velocity"},
@@ -149,7 +149,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=1.0,
         )
 
-        # Joint position observations - 5-frame history (16 joints * 5 frames = 80 dims)
+        # 关节位置观测 - 5帧历史 (16关节 * 5帧 = 80维)
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel_without_wheel,
             params={
@@ -161,7 +161,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=1.0,
         )
 
-        # Joint velocity observations - 5-frame history (16 joints * 5 frames = 80 dims)
+        # 关节速度观测 - 5帧历史 (16关节 * 5帧 = 80维)
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
@@ -170,7 +170,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=0.05,
         )
 
-        # Last actions - 5-frame history (16 actions * 5 frames = 80 dims)
+        # 上一步动作 - 5帧历史 (16动作 * 5帧 = 80维)
         actions = ObsTerm(
             func=mdp.last_action,
             clip=(-100.0, 100.0),
@@ -180,34 +180,34 @@ class ThunderHistObservationsCfg(ObservationsCfg):
         def __post_init__(self):
             self.enable_corruption = True
             self.concatenate_terms = True
-            self.history_length = 5  # 5-frame history for the entire policy observation group
+            self.history_length = 5  # 为整个Policy观测组设置5帧历史
 
     @configclass
     class CriticCfg(ObsGroup):
-        """Critic observation config - with history"""
+        """Critic观测配置 - 带历史信息"""
 
-        # Base linear velocity - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 基座线速度 - 5帧历史 (3维 * 5帧 = 15维)
         base_lin_vel = ObsTerm(
             func=mdp.base_lin_vel,
             clip=(-100.0, 100.0),
             scale=1.0,
         )
 
-        # Base angular velocity - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 基座角速度 - 5帧历史 (3维 * 5帧 = 15维)
         base_ang_vel = ObsTerm(
             func=mdp.base_ang_vel,
             clip=(-100.0, 100.0),
             scale=1.0,
         )
 
-        # Projected gravity vector - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 投影重力向量 - 5帧历史 (3维 * 5帧 = 15维)
         projected_gravity = ObsTerm(
             func=mdp.projected_gravity,
             clip=(-100.0, 100.0),
             scale=1.0,
         )
 
-        # Velocity commands - 5-frame history (3 dims * 5 frames = 15 dims)
+        # 速度命令 - 5帧历史 (3维 * 5帧 = 15维)
         velocity_commands = ObsTerm(
             func=mdp.generated_commands,
             params={"command_name": "base_velocity"},
@@ -215,7 +215,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=1.0,
         )
 
-        # Joint position observations - 5-frame history (16 joints * 5 frames = 80 dims)
+        # 关节位置观测 - 5帧历史 (16关节 * 5帧 = 80维)
         joint_pos = ObsTerm(
             func=mdp.joint_pos_rel_without_wheel,
             params={
@@ -226,7 +226,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=1.0,
         )
 
-        # Joint velocity observations - 5-frame history (16 joints * 5 frames = 80 dims)
+        # 关节速度观测 - 5帧历史 (16关节 * 5帧 = 80维)
         joint_vel = ObsTerm(
             func=mdp.joint_vel_rel,
             params={"asset_cfg": SceneEntityCfg("robot", joint_names=".*", preserve_order=True)},
@@ -234,7 +234,7 @@ class ThunderHistObservationsCfg(ObservationsCfg):
             scale=1.0,
         )
 
-        # Last actions - 5-frame history (16 actions * 5 frames = 80 dims)
+        # 上一步动作 - 5帧历史 (16动作 * 5帧 = 80维)
         actions = ObsTerm(
             func=mdp.last_action,
             clip=(-100.0, 100.0),
@@ -449,14 +449,14 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
             },
         }
 
-        # ── Phase 1 Baseline: ALL DR disabled ──
-        self.events.randomize_rigid_body_material = None       # friction DR
-        self.events.randomize_rigid_body_mass_base = None      # mass DR
-        self.events.randomize_rigid_body_mass_others = None    # mass DR
-        self.events.randomize_com_positions = None             # COM DR
-        self.events.randomize_apply_external_force_torque = None  # push DR
-        self.events.randomize_actuator_gains = None            # PD gain DR
-        self.events.randomize_push_robot = None                # velocity push DR
+        # ── Phase 1: ALL DR disabled (add later after baseline) ──
+        self.events.randomize_rigid_body_material = None       # friction
+        self.events.randomize_rigid_body_mass_base = None      # mass base
+        self.events.randomize_rigid_body_mass_others = None    # mass others
+        self.events.randomize_com_positions = None             # COM
+        self.events.randomize_apply_external_force_torque = None  # external force
+        self.events.randomize_actuator_gains = None            # actuator gains
+        self.events.randomize_push_robot = None                # push
 
 
 
@@ -468,11 +468,11 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.is_terminated.weight = w.is_terminated
 
         # Tracking rewards
-        self.rewards.track_lin_vel_xy_exp.weight = w.track_lin_vel_xy_exp  # tracked in body frame
+        self.rewards.track_lin_vel_xy_exp.weight = w.track_lin_vel_xy_exp  # 使用Body Frame跟踪
         self.rewards.track_ang_vel_z_exp.weight = w.track_ang_vel_z_exp
         self.rewards.upward.weight = w.upward
 
-        # Root penalties (aligned with B2W)
+        # Root penalties (调整为与B2W一致)
         self.rewards.lin_vel_z_l2.weight = w.lin_vel_z_l2
         self.rewards.ang_vel_xy_l2.weight = w.ang_vel_xy_l2
         self.rewards.flat_orientation_l2.weight = w.flat_orientation_l2
@@ -499,7 +499,7 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         self.rewards.joint_pos_limits.params["asset_cfg"].joint_names = self.leg_joint_names
         self.rewards.joint_vel_limits.weight = w.joint_vel_limits
         self.rewards.joint_vel_limits.params["asset_cfg"].joint_names = self.wheel_joint_names
-        self.rewards.joint_power.weight = w.joint_power  # aligned with B2W
+        self.rewards.joint_power.weight = w.joint_power  # 调整为与B2W一致
         self.rewards.joint_power.params["asset_cfg"].joint_names = self.leg_joint_names
         self.rewards.stand_still.weight = w.stand_still
         self.rewards.stand_still.params["asset_cfg"].joint_names = self.leg_joint_names
@@ -556,8 +556,8 @@ class ThunderHistRoughEnvCfg(LocomotionVelocityRoughEnvCfg):
         # ------------------------------Terminations------------------------------
         self.terminations.illegal_contact = None
 
-        # Disable other curriculum stages; focus on basic locomotion training
-        self.curriculum.command_levels = None
+        # 禁用其他课程学习，专注于基本运动训练
+        # self.curriculum.command_levels — enabled (velocity curriculum)
         self.curriculum.disturbance_levels = None
         self.curriculum.mass_randomization_levels = None
         self.curriculum.com_randomization_levels = None
