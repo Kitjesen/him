@@ -37,6 +37,18 @@ gym.register(
     disable_env_checker=True,
     kwargs={
         "env_cfg_entry_point": f"{__name__}.rough_env_cfg:ThunderHistRoughEnvCfg",
-        "rsl_rl_cfg_entry_point": f"{agents.__name__}.rsl_rl_ppo_cfg:ThunderHistRoughPPORunnerCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.recovery_ppo_cfg:RecoveryPPORunnerCfg",
+    },
+)
+
+
+
+gym.register(
+    id="RobotLab-Isaac-Velocity-Recovery-Thunder-v0",
+    entry_point="isaaclab.envs:ManagerBasedRLEnv",
+    disable_env_checker=True,
+    kwargs={
+        "env_cfg_entry_point": f"{__name__}.recovery_env_cfg:ThunderRecoveryEnvCfg",
+        "rsl_rl_cfg_entry_point": f"{agents.__name__}.recovery_ppo_cfg:RecoveryPPORunnerCfg",
     },
 )

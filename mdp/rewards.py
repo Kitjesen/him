@@ -1111,32 +1111,35 @@ def base_height_tolerance(
 
 def track_lin_vel_direction(
     env: ManagerBasedRLEnv,
-    command_name: str,
+    std: float = 0.25,
+    command_name: str = "base_velocity",
     asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
 ) -> torch.Tensor:
-    """B2W Eq.14: Linear velocity tracking with direction reward.
+    """Linear velocity tracking: steep exp + direction dot product + gravity mask.
 
-    if |v_des| < 0.05:
-        r = 2.0 * exp(-2.0 * ||v_xy_body||^2)     # stop command: penalize any motion
-    else:
-        r = exp(-2.0 * ||v_xy - v_des||^2) + v_des · v_xy  # track + direction dot product
+    Combines original track_lin_vel_xy_exp with direction reward:
+    - exp(-error/std^2): steep (std=0.25), standing still gets low score
+    - v_des . v_xy: direction alignment bonus
+    - gravity mask: no reward when fallen
     """
     asset = env.scene[asset_cfg.name]
-    v_xy = asset.data.root_lin_vel_b[:, :2]  # body frame xy velocity
-    v_des = env.command_manager.get_command(command_name)[:, :2]  # desired xy velocity
+    v_xy = asset.data.root_lin_vel_b[:, :2]
+    v_des = env.command_manager.get_command(command_name)[:, :2]
 
-    v_des_norm = torch.norm(v_des, dim=1)
-    is_stop = v_des_norm < 0.05
-
-    # Stop: reward stillness
-    r_stop = 2.0 * torch.exp(-2.0 * torch.sum(v_xy ** 2, dim=1))
-
-    # Move: exp tracking + direction dot product
+    # Steep exp tracking (std=0.25 -> coefficient=16)
     error = torch.sum((v_xy - v_des) ** 2, dim=1)
-    dot = torch.sum(v_des * v_xy, dim=1)  # direction alignment
-    r_move = torch.exp(-2.0 * error) + dot
+    r_track = torch.exp(-error / (std ** 2))
 
-    return torch.where(is_stop, r_stop, r_move)
+    # Direction dot product bonus
+    dot = torch.sum(v_des * v_xy, dim=1)
+
+    # Gravity mask: no reward when fallen
+    gravity_z = -asset.data.projected_gravity_b[:, 2]
+    mask = torch.clamp(gravity_z, 0.0, 0.7) / 0.7
+
+    return (r_track + dot) * mask
+
+
 
 
 def track_ang_vel_yaw(

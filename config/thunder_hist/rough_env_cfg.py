@@ -73,14 +73,14 @@ class ThunderHistRoughRewardWeights:
     is_terminated: float = 0.0
 
     # Tracking rewards
-    track_lin_vel_xy_exp: float = 0.0  # replaced by Eq.14
-    track_ang_vel_z_exp: float = 0.0  # replaced by Eq.15
+    track_lin_vel_xy_exp: float = 6.0
+    track_ang_vel_z_exp: float = 3.0
     upward: float = 2.0
 
     # Root penalties
-    lin_vel_z_l2: float = 0.0  # covered by Eq.16 body_motion
-    ang_vel_xy_l2: float = 0.0  # covered by Eq.16 body_motion
-    flat_orientation_l2: float = 0.0  # covered by Eq.17 body_orientation
+    lin_vel_z_l2: float = -2.0
+    ang_vel_xy_l2: float = -0.05
+    flat_orientation_l2: float = -0.1
     base_height_l2: float = 0.0
     body_lin_acc_l2: float = 0.0
 
@@ -94,30 +94,30 @@ class ThunderHistRoughRewardWeights:
     joint_pos_limits: float = -2.0
     joint_vel_limits: float = 0.0
     joint_power: float = -2e-5
-    stand_still: float = -5.0
+    stand_still: float = -2.0
     joint_pos_penalty: float = -1.0
     wheel_vel_penalty: float = 0.0
     joint_mirror: float = -0.05
 
     # Action penalties
-    action_rate_l2: float = -0.03
+    action_rate_l2: float = -0.01
     action_smoothness_l2: float = 0.0
 
     # B2W velocity tracking (replaces original tracking)
-    track_lin_vel_direction: float = 6.0
-    track_ang_vel_yaw: float = 3.0
-    body_motion_penalty: float = -1.0
-    body_tilt_penalty: float = -1.0
+    track_lin_vel_direction: float = 0.0
+    track_ang_vel_yaw: float = 0.0
+    body_motion_penalty: float = 0.0
+    body_tilt_penalty: float = 0.0
 
     # Base height (B2W Eq.18: target=0.426, tolerance=0.05)
-    base_height_tolerance: float = -10.0
+    base_height_tolerance: float = 0.0
 
     # Foot impact penalties
-    foot_impact_velocity: float = -0.6
-    contact_force_threshold: float = -0.01
+    foot_impact_velocity: float = 0.0
+    contact_force_threshold: float = 0.0
 
     # Contact penalties
-    undesired_contacts: float = -3.0
+    undesired_contacts: float = -1.0
     contact_forces: float = -5e-4
 
     # Other rewards
