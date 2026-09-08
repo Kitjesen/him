@@ -35,7 +35,8 @@ class HIMPPO:
         self.actor_critic = actor_critic
         self.actor_critic.to(self.device)
         self.storage = None
-        self.optimizer = optim.Adam(self.actor_critic.parameters(), lr=learning_rate)
+        self.ppo_parameters = [p for n, p in self.actor_critic.named_parameters() if not n.startswith('estimator.')]
+        self.optimizer = optim.Adam(self.ppo_parameters, lr=learning_rate)
         self.transition = HIMRolloutStorage.Transition()
         
         self.clip_param = clip_param
@@ -70,7 +71,8 @@ class HIMPPO:
             actor_obs_shape,
             critic_obs_shape,
             action_shape,
-            self.device
+            self.device,
+            one_step_dim=self.actor_critic.num_one_step_obs,
         )
     
     def test_mode(self):
@@ -98,16 +100,23 @@ class HIMPPO:
         rewards: torch.Tensor,
         dones: torch.Tensor,
         infos: dict,
-        next_critic_obs: torch.Tensor
+        next_critic_obs: torch.Tensor,
+        next_observation: torch.Tensor,
+        next_velocity: torch.Tensor,
+        terminal_values: torch.Tensor = None,
     ):
         self.transition.next_critic_observations = next_critic_obs.clone()
+        self.transition.next_observation = next_observation.detach().clone()
+        self.transition.next_velocity = next_velocity.detach().clone()
         self.transition.rewards = rewards.clone()
         self.transition.dones = dones
         
         # Bootstrapping on time outs
         if 'time_outs' in infos:
+            if terminal_values is None and infos['time_outs'].any():
+                raise ValueError('Timeout bootstrap requires terminal pre-reset value')
             self.transition.rewards += self.gamma * torch.squeeze(
-                self.transition.values * infos['time_outs'].unsqueeze(1).to(self.device),
+                (terminal_values if terminal_values is not None else self.transition.values) * infos['time_outs'].unsqueeze(1).to(self.device),
                 1
             )
         
@@ -133,7 +142,8 @@ class HIMPPO:
         
         for (obs_batch, critic_obs_batch, actions_batch, next_critic_obs_batch,
              target_values_batch, advantages_batch, returns_batch,
-             old_actions_log_prob_batch, old_mu_batch, old_sigma_batch) in generator:
+             old_actions_log_prob_batch, old_mu_batch, old_sigma_batch,
+             next_observation, next_velocity, valid) in generator:
             
             # Update Estimator (SwAV)
             # Following HIMLoco: use next timestep (t+1) velocity as supervision
@@ -142,7 +152,9 @@ class HIMPPO:
             # Only pass lr if we want to schedule estimator learning rate separately
             estimation_loss, swap_loss = self.actor_critic.estimator.update(
                 obs_history=obs_batch,
-                next_critic_obs=next_critic_obs_batch,
+                next_observation=next_observation,
+                next_velocity=next_velocity,
+                valid=valid,
                 lr=None,  # Use estimator's own learning rate, don't override with PPO's
             )
             
@@ -198,7 +210,7 @@ class HIMPPO:
             
             self.optimizer.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(self.actor_critic.parameters(), self.max_grad_norm)
+            nn.utils.clip_grad_norm_(self.ppo_parameters, self.max_grad_norm)
             self.optimizer.step()
             
             mean_value_loss += value_loss.item()

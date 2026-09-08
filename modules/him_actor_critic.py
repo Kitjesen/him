@@ -49,6 +49,11 @@ class HIMActorCritic(nn.Module):
             print(f"HIMActorCritic got unexpected arguments: {list(kwargs.keys())}")
         
         super(HIMActorCritic, self).__init__()
+        if num_one_step_obs <= 0 or num_actor_obs % num_one_step_obs:
+            raise ValueError('Actor history must contain an integer number of frames')
+        if estimator_latent_dim <= 0:
+            raise ValueError('Latent dimension must be positive')
+        estimator_hidden_dims = [*estimator_hidden_dims[:-1], estimator_latent_dim]
         
         activation_fn = get_activation(activation)
         
@@ -108,11 +113,13 @@ class HIMActorCritic(nn.Module):
         
         self.critic = nn.Sequential(*critic_layers)
 
-        self.std = nn.Parameter(init_noise_std * torch.ones(num_actions))
+        if init_noise_std <= 0:
+            raise ValueError('Initial noise std must be positive')
+        self.log_std = nn.Parameter(torch.full((num_actions,), float(init_noise_std)).log())
         self.distribution = None
         
         # Disable validation for speedup
-        Normal.set_default_validate_args = False
+        # Keep distribution validation local; do not overwrite PyTorch's class API.
         
         # Print architecture
         print("\n✅ HIMActorCritic initialized:")
@@ -134,6 +141,10 @@ class HIMActorCritic(nn.Module):
         """Forward pass (not implemented, use act() and evaluate() instead)."""
         raise NotImplementedError("Use act() and evaluate() methods instead")
     
+    @property
+    def std(self):
+        return self.log_std.clamp(-10.0, 2.0).exp()
+
     @property
     def action_mean(self):
         """Get mean of current action distribution."""

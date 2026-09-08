@@ -69,7 +69,7 @@ class PolicyExporterHIM(nn.Module):
         z = parts[..., 3:]  # Extract latent features
 
         # Normalize latent (L2 normalization)
-        z = F.normalize(z, dim=-1, p=2)
+        z = F.normalize(z, dim=-1, p=2.0)
 
         # Extract current observation (last frame in HIM order)
         current_obs = obs_history[:, -self.num_one_step_obs :]

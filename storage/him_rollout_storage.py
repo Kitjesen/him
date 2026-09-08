@@ -14,6 +14,8 @@ class HIMRolloutStorage:
             self.action_mean = None
             self.action_sigma = None
             self.next_critic_observations = None
+            self.next_observation = None
+            self.next_velocity = None
         
         def clear(self):
             self.__init__()
@@ -25,7 +27,8 @@ class HIMRolloutStorage:
         obs_shape: tuple,
         privileged_obs_shape: tuple,
         actions_shape: tuple,
-        device: str = 'cpu'
+        device: str = 'cpu',
+        one_step_dim: int = 53,
     ):
         self.device = device
         self.obs_shape = obs_shape
@@ -33,6 +36,8 @@ class HIMRolloutStorage:
         self.actions_shape = actions_shape
         self.num_transitions_per_env = num_transitions_per_env
         self.num_envs = num_envs
+        self.next_observation = torch.zeros(num_transitions_per_env, num_envs, one_step_dim, device=device)
+        self.next_velocity = torch.zeros(num_transitions_per_env, num_envs, 3, device=device)
         
         self.observations = torch.zeros(
             num_transitions_per_env, num_envs, *obs_shape,
@@ -97,6 +102,8 @@ class HIMRolloutStorage:
             raise AssertionError("Rollout buffer overflow")
         
         self.observations[self.step].copy_(transition.observations)
+        self.next_observation[self.step].copy_(transition.next_observation)
+        self.next_velocity[self.step].copy_(transition.next_velocity)
         
         if self.privileged_observations is not None:
             self.privileged_observations[self.step].copy_(transition.critic_observations)
@@ -149,6 +156,10 @@ class HIMRolloutStorage:
     
     def mini_batch_generator(self, num_mini_batches: int, num_epochs: int = 8):
         batch_size = self.num_envs * self.num_transitions_per_env
+        if self.step != self.num_transitions_per_env:
+            raise ValueError('Cannot update a partial rollout')
+        if num_mini_batches < 1 or batch_size % num_mini_batches:
+            raise ValueError('Rollout size must be divisible by minibatches')
         mini_batch_size = batch_size // num_mini_batches
         indices = torch.randperm(
             num_mini_batches * mini_batch_size,
@@ -192,5 +203,8 @@ class HIMRolloutStorage:
                 
                 yield (obs_batch, critic_obs_batch, actions_batch, next_critic_obs_batch,
                        target_values_batch, advantages_batch, returns_batch,
-                       old_log_prob_batch, old_mu_batch, old_sigma_batch)
+                       old_log_prob_batch, old_mu_batch, old_sigma_batch,
+                       self.next_observation.flatten(0, 1)[batch_idx],
+                       self.next_velocity.flatten(0, 1)[batch_idx],
+                       ~self.dones.flatten(0, 1)[batch_idx, 0].bool())
 
