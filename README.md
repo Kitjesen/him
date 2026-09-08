@@ -1,3 +1,19 @@
+# DOSO Thunder HIM adaptation
+
+Use **`train_thunder.py`**, not the legacy `train_him.py`, gym task IDs or commands below.
+This working fork pins our C9 source and Thunder v4 physics. It implements 53D frames,
+five-frame history (265D), a 274D privileged critic and 16 original Thunder actions.
+Original C9 checkpoints cannot directly resume this new network.
+
+See [ADAPTATION.md](ADAPTATION.md) for the adaptation report, verification and launch command.
+Only pipeline validation is in scope here; no stairs success or hardware deployment is claimed.
+HIM means **Hybrid Internal Model** in the original paper.
+
+## Archived upstream documentation (not the DOSO entry/config contract)
+
+The material below describes the unadapted repository and may use incompatible assets,
+dimensions, task registration and exports. Retained for provenance, not execution guidance.
+
 # Thunder-HIM: History-based Implicit Model for Quadruped Locomotion
 
 > Locomotion training framework for the **Thunder** wheeled-legged quadruped robot,

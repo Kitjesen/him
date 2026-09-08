@@ -4,7 +4,6 @@ import torch.nn.functional as F
 import torch.optim as optim
 from typing import Tuple
 
-from utils.observation_reshaper import extract_current_velocity_isaac
 
 
 class HIMEstimator(nn.Module):
@@ -142,16 +141,18 @@ class HIMEstimator(nn.Module):
     def update(
         self,
         obs_history: torch.Tensor,
-        next_critic_obs: torch.Tensor,
+        next_observation: torch.Tensor,
+        next_velocity: torch.Tensor,
+        valid: torch.Tensor,
         lr: float = None
     ) -> Tuple[float, float]:
         """
         Update estimator using SwAV contrastive learning.
         
         Training procedure:
-        1. Extract ground truth velocity from next critic observation (timestep t+1)
+        1. Filter cross-episode transitions using the explicit valid mask
         2. Encode history → predicted velocity + source latent
-        3. Encode current obs → target latent
+        3. Encode clean next observation → target latent
         4. Normalize latents and prototypes
         5. Compute SwAV loss with Sinkhorn-Knopp assignment
         6. Compute velocity estimation loss (MSE)
@@ -164,14 +165,28 @@ class HIMEstimator(nn.Module):
         Args:
             obs_history: Historical observations in HIM order [batch, temporal_steps * num_one_step_obs]
                        Last timestep is t, so we predict velocity at timestep t+1 (after action execution)
-            next_critic_obs: Next critic observation (timestep t+1) with history [t-3, t-2, t-1, t, t+1]
-                           Used to extract ground truth velocity at timestep t+1
+            next_observation: Clean next frame with the same order/scales as the actor (no history).
+            next_velocity: Explicit next body-frame linear velocity [batch, 3].
+            valid: Same-episode transition mask; reset samples are excluded before all losses.
             lr: Optional learning rate override (for learning rate scheduling)
         
         Returns:
             estimation_loss: Velocity prediction MSE loss
             swap_loss: SwAV contrastive loss
         """
+        # Explicit targets only; never infer velocity from a privileged tensor offset.
+        batch = obs_history.shape[0]
+        if next_observation.shape != (batch, self.num_one_step_obs) or next_velocity.shape != (batch, 3):
+            raise ValueError('Invalid HIM supervision dimensions')
+        if valid.shape != (batch,) or valid.dtype != torch.bool:
+            raise ValueError('valid must be one boolean per transition')
+        if not valid.any():
+            return 0.0, 0.0
+        obs_history = obs_history[valid].detach()
+        next_observation = next_observation[valid].detach()
+        next_velocity = next_velocity[valid].detach()
+        if not all(torch.isfinite(t).all() for t in (obs_history, next_observation, next_velocity)):
+            raise ValueError('Nonfinite valid estimator targets')
         # Update learning rate if provided (for learning rate scheduling)
         # NOTE: Only update if explicitly provided, otherwise use estimator's own learning rate
         if lr is not None:
@@ -184,24 +199,21 @@ class HIMEstimator(nn.Module):
                 print(f"[DEBUG] Estimator LR changed: {old_lr:.6f} -> {lr:.6f}")
         
         # ================================================================
-        # 1. Extract ground truth velocity from next critic observation (timestep t+1)
+        # 1. Explicit clean body-frame velocity at timestep t+1.
         # ================================================================
         # obs_history contains history [t-4, t-3, t-2, t-1, t], we predict velocity at timestep t+1
-        # next_critic_obs contains history [t-3, t-2, t-1, t, t+1], we extract velocity at timestep t+1
         # This follows HIMLoco's design: predict "what will be the velocity after executing the action"
-        vel = extract_current_velocity_isaac(next_critic_obs, self.history_len).detach()
+        vel = next_velocity
         
         # ================================================================
-        # 2. Extract current observation (for target encoder)
+        # 2. Explicit next observation for the target encoder.
         # ================================================================
-        # Observations are in HIM order (per-timestep), so current frame is at the end
-        next_obs = obs_history[:, -self.num_one_step_obs:].detach()
+        next_obs = next_observation
         
         # ================================================================
-        # 3. Encode history and current observation
+        # 3. Encode history and next observation.
         # ================================================================
-        # IMPORTANT: Do not use encode() method here as it detaches obs_history
-        # We need gradients to flow back through obs_history for training
+        # Direct calls retain gradients to encoder parameters, not the input tensors.
         z_s = self.encoder(obs_history)  # Direct encoder call, no detach
         z_t = self.target(next_obs)
         
